@@ -2,7 +2,7 @@
 
 ### Just simple script with XYZ(WMS, TFS) inference proxy in 180 lines of code
 
-- setup requirements from requirements.txt
+- setup requirements from requirements.txt file
 - set parameters inside script
 - put you model
 - run `uvicorn xyzinfereceproxy:app --port 9009` (or any other port number you want)
