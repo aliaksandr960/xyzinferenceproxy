@@ -120,6 +120,8 @@ def do_inference_on_queue(inferenc_f, q, m):
         event.set()
 
 
+## ---> Confiuration and run
+
 # XYZ source configuration
 mapbox_template = 'https://a.tiles.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.jpg?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJja2w5YWt5bnYwNjZmMnFwZjhtbHk1MnA1In0.eq2aumBK6JuRoIuBMm6Gew'
 target_z = 18
