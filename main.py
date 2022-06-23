@@ -139,7 +139,7 @@ tile_list_downloader = lambda xyz_list: get_tiles(xyz_list, tile_downloader, til
 
 # Model cofiguration and init
 device = 'cuda:0'
-model = torch.jit.load('yurt.jit.pt', map_location=device)
+model = torch.jit.load('path.to.model.jit.pt', map_location=device)
 model.eval()
 
 # Inference thread and queues configuration and init
