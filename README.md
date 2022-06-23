@@ -5,7 +5,7 @@
 - setup requirements from requirements.txt
 - set parameters inside script
 - put you model
-- run 'uvicorn xyzinfereceproxy:app --port 9009' (or any other you want)
+- run `uvicorn xyzinfereceproxy:app --port 9009` (or any other port number you want)
 - connect with your favorite GIS
 - see tiles with model inference
 
