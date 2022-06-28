@@ -25,8 +25,8 @@ def add_tile_info(image, x, y, z, tz=''):
     add_text_default(image, "z={}/{}".format(str(z), str(tz)),(16, 196))
 
 
-def get_cache_index(x, y, z):
-    return "{}_{}_{}".format(str(x), str(y), str(z))
+def get_cache_index(m, x, y, z):
+    return "{}_{}_{}_{}".format(str(m), str(x), str(y), str(z))
 
 
 def download_xyz_tile(template, x, y, z, brg_convesion=True,
@@ -54,13 +54,13 @@ def download_xyz_tile(template, x, y, z, brg_convesion=True,
 
 def get_tiles(xyz_list, tile_downloader, tile_cache):
     result = []
-    for x, y, z in xyz_list:
-        xyz_index = get_cache_index(x, y, z)
+    for m, x, y, z in xyz_list:
+        xyz_index = get_cache_index(m, x, y, z)
         if xyz_index not in tile_cache:
             done_event = threading.Event()
             try:
                 tile_cache[xyz_index] = (None, done_event)
-                tile_image = tile_downloader(x, y, z)
+                tile_image = tile_downloader(m, x, y, z)
                 tile_cache[xyz_index] = (tile_image, done_event)
             finally:
                 # There could be another function in parallel, that wait for this tile
@@ -73,7 +73,7 @@ def get_tiles(xyz_list, tile_downloader, tile_cache):
     return result
 
 
-def get_tile_mosaic(x, y, z, tile_list_downloader, tile_size=(256, 256, 3), pad=1):
+def get_tile_mosaic(m, x, y, z, tile_list_downloader, tile_size=(256, 256, 3), pad=1):
     th, tw, tc = tile_size
     mh, mw, mc = (pad *2 +1) * th, (pad *2 +1) * tw, tc
     mosaic = np.zeros([mh, mw, mc], dtype=np.uint8)
@@ -83,7 +83,7 @@ def get_tile_mosaic(x, y, z, tile_list_downloader, tile_size=(256, 256, 3), pad=
     xyz_list = []
     for j in ys:
         for i in xs:
-            xyz_list.append((i, j, z))
+            xyz_list.append((m, i, j, z))
 
     tiles = tile_list_downloader(xyz_list)
     for i in range(pad *2 +1):
@@ -96,7 +96,10 @@ def get_tile_mosaic(x, y, z, tile_list_downloader, tile_size=(256, 256, 3), pad=
     return mosaic
 
 
-def do_inference(image, model, channel, device):
+def do_inference(image, model, channel, device, rescale=None):
+    h, w, _ = image.shape
+    if rescale:
+        image = cv2.resize(image, dsize=rescale)
     # Add batch-dim, hwc -> chw
     image_t = torch.unsqueeze(torch.from_numpy(np.moveaxis(image, 2, 0)), dim=0).to(device)
     # Remove batch-dim, extract class channel
@@ -109,6 +112,8 @@ def do_inference(image, model, channel, device):
     prediction_np *= 255
     # Float -> Unit8
     prediction_np = prediction_np.astype(np.uint8)
+    if rescale:
+        prediction_np = cv2.resize(prediction_np, dsize=(h, w))
     return prediction_np
 
 
@@ -122,28 +127,38 @@ def do_inference_on_queue(inferenc_f, q, m):
 
 ## ---> Confiuration and run
 
-# XYZ source configuration
+# XYZ sources configuration
 mapbox_template = 'https://a.tiles.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.jpg?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJja2w5YWt5bnYwNjZmMnFwZjhtbHk1MnA1In0.eq2aumBK6JuRoIuBMm6Gew'
-target_z = 18
+google_template = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
+esri_template = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+
+template_map = {
+    'm': mapbox_template,
+    'g': google_template,
+    'e': esri_template,
+}
+
+target_z = 16
 tile_size = (256, 256, 3)
 th, tw, tc = tile_size
 
 # Cache configuration
-max_cached_tiles = 1024
+max_cached_tiles = 2048
 tile_cache = collections.OrderedDict()
 
 # Tile donwnloader cofiguration and init
-tile_downloader = lambda x, y, z: download_xyz_tile(mapbox_template, x, y, z, brg_convesion=False,
+tile_downloader = lambda m, x, y, z: download_xyz_tile(template_map[m], x, y, z, brg_convesion=False,
                                                     request_timeout=2, retry_timeout=2, attempts=2)
 tile_list_downloader = lambda xyz_list: get_tiles(xyz_list, tile_downloader, tile_cache)
 
 # Model cofiguration and init
 device = 'cuda:0'
-model = torch.jit.load('path.to.model.jit.pt', map_location=device)
+model = torch.jit.load('best.pth.jit.pt', map_location=device)
 model.eval()
 
 # Inference thread and queues configuration and init
-inference_f = lambda image: do_inference(image, model, channel=1, device=device)
+rescale_size = None # (512, 512)
+inference_f = lambda image: do_inference(image, model, channel=1, device=device, rescale=rescale_size)
 inference_q = queue.Queue()
 inference_m = dict()
 threading.Thread(target=lambda: do_inference_on_queue(inference_f, inference_q, inference_m), daemon=False).start()
@@ -151,13 +166,13 @@ threading.Thread(target=lambda: do_inference_on_queue(inference_f, inference_q, 
 # Fast API init
 app = FastAPI()
 
-@app.get("/{x}/{y}/{z}.png", responses = {200: {"content": {"image/png": {}}}}, response_class=Response,)
-def get_tile(x, y, z):
+@app.get("/{m}/{x}/{y}/{z}.png", responses = {200: {"content": {"image/png": {}}}}, response_class=Response,)
+def get_tile(m, x, y, z):
     x, y, z = int(x), int(y), int(z)
     if z == target_z:
         # If there is target Zoom -> do inference
-        mosaic = get_tile_mosaic(x, y, z, tile_list_downloader, tile_size=tile_size)
-        inference_i = '{}_{}'.format(get_cache_index(x, y, z), str(time.time()))
+        mosaic = get_tile_mosaic(m, x, y, z, tile_list_downloader, tile_size=tile_size)
+        inference_i = '{}_{}'.format(get_cache_index(m, x, y, z), str(time.time()))
         inference_e = threading.Event()
         inference_q.put((mosaic, inference_i, inference_e))
         inference_e.wait()
@@ -167,7 +182,7 @@ def get_tile(x, y, z):
         tile = np.stack([prediction_crop, prediction_crop, prediction_crop], axis=-1)
     else:
         # If not -> just pass tile with info
-        tile = tile_downloader(x, y, z)
+        tile = tile_downloader(m, x, y, z)
         add_tile_info(tile, x, y, z, target_z)
     
     # If limit reached -> clear cache
