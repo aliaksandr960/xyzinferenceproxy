@@ -96,16 +96,32 @@ def get_tile_mosaic(m, x, y, z, tile_list_downloader, tile_size=(256, 256, 3), p
     return mosaic
 
 
-def do_inference(image, model, channel, device, rescale=None):
+def do_inference(image, model, channel, device, k=1.0, rescale=None):
     h, w, _ = image.shape
     if rescale:
         image = cv2.resize(image, dsize=rescale)
     # Add batch-dim, hwc -> chw
     image_t = torch.unsqueeze(torch.from_numpy(np.moveaxis(image, 2, 0)), dim=0).to(device)
     # Remove batch-dim, extract class channel
-    prediction = torch.squeeze(model(image_t)[:, channel, :, :]).contiguous()
-    # Comment, if you apply activation function inside your model
-    prediction = prediction.sigmoid()
+    prediction = model(image_t.to(torch.float))
+    prediction = (prediction[:, channel, :, :] * k)
+    
+
+    # Filter small objects
+    # prediction = torch.unsqueeze(prediction, dim=1)
+    # prediction = -torch.nn.functional.max_pool2d(-prediction, kernel_size=3, stride=1, padding=3 // 2)
+    # prediction = torch.nn.functional.max_pool2d(prediction, kernel_size=3, stride=1, padding=3 // 2)
+
+    prediction = torch.squeeze(prediction).contiguous()
+    # Calculate unsertanity
+    unsertanity = torch.ones_like(prediction) - (torch.abs((prediction - 0.5)) * 2)
+    # Device -> CPU -> Numpy
+    unsertanity_np = unsertanity.detach().cpu().numpy()
+    # 0-1 range (default in most models) -> 0-255 range
+    unsertanity_np *=255
+    # Float -> Unit8
+    unsertanity_np = unsertanity_np.astype(np.uint8)
+
     # Device -> CPU -> Numpy
     prediction_np = prediction.detach().cpu().numpy()
     # 0-1 range (default in most models) -> 0-255 range
@@ -114,7 +130,8 @@ def do_inference(image, model, channel, device, rescale=None):
     prediction_np = prediction_np.astype(np.uint8)
     if rescale:
         prediction_np = cv2.resize(prediction_np, dsize=(h, w))
-    return prediction_np
+        unsertanity_np = cv2.resize(unsertanity_np, dsize=(h, w))
+    return prediction_np, unsertanity_np
 
 
 def do_inference_on_queue(inferenc_f, q, m):
@@ -153,11 +170,11 @@ tile_list_downloader = lambda xyz_list: get_tiles(xyz_list, tile_downloader, til
 
 # Model cofiguration and init
 device = 'cuda:0'
-model = torch.jit.load('best.pth.jit.pt', map_location=device)
+model = torch.jit.load('07_03_2022_12_56_33_train4landcoverai.pth.iou.pt.jit.pt', map_location=device)
 model.eval()
 
 # Inference thread and queues configuration and init
-rescale_size = None # (512, 512)
+rescale_size = None
 inference_f = lambda image: do_inference(image, model, channel=1, device=device, rescale=rescale_size)
 inference_q = queue.Queue()
 inference_m = dict()
@@ -166,8 +183,8 @@ threading.Thread(target=lambda: do_inference_on_queue(inference_f, inference_q, 
 # Fast API init
 app = FastAPI()
 
-@app.get("/{m}/{x}/{y}/{z}.png", responses = {200: {"content": {"image/png": {}}}}, response_class=Response,)
-def get_tile(m, x, y, z):
+@app.get("/{t}/{m}/{x}/{y}/{z}.png", responses = {200: {"content": {"image/png": {}}}}, response_class=Response,)
+def get_tile(t, m, x, y, z):
     x, y, z = int(x), int(y), int(z)
     if z == target_z:
         # If there is target Zoom -> do inference
@@ -177,9 +194,20 @@ def get_tile(m, x, y, z):
         inference_q.put((mosaic, inference_i, inference_e))
         inference_e.wait()
 
-        prediction = inference_m.pop(inference_i)
+        prediction, unsertanity = inference_m.pop(inference_i)
         prediction_crop = prediction[th:th *2, tw:tw *2]
-        tile = np.stack([prediction_crop, prediction_crop, prediction_crop], axis=-1)
+        unsertanity_crop = unsertanity[th:th *2, tw:tw *2]
+        blank = np.zeros([th, tw])
+
+        if t == 't':
+            tile = np.stack([blank, blank, prediction_crop], axis=-1)
+        elif t == 'tu':
+                    tile = np.stack([blank, unsertanity_crop, prediction_crop], axis=-1)
+        elif t == 'u':
+            tile = np.stack([blank, unsertanity_crop, blank], axis=-1)
+        else:
+            raise ValueError('Unsupported output type {}'.format(t))
+
     else:
         # If not -> just pass tile with info
         tile = tile_downloader(m, x, y, z)
