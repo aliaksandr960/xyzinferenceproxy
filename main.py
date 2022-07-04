@@ -205,6 +205,9 @@ def get_tile(t, m, x, y, z):
                     tile = np.stack([blank, unsertanity_crop, prediction_crop], axis=-1)
         elif t == 'u':
             tile = np.stack([blank, unsertanity_crop, blank], axis=-1)
+        elif t == 'b':
+            bin_prediction_crop = (prediction_crop > 128) * 255
+            tile = np.stack([blank, blank, bin_prediction_crop], axis=-1)
         else:
             raise ValueError('Unsupported output type {}'.format(t))
 
