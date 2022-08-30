@@ -145,12 +145,12 @@ def do_inference_on_queue(inferenc_f, q, m):
 ## ---> Confiuration and run
 
 # XYZ sources configuration
-mapbox_template = 'https://a.tiles.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.jpg?access_token=pastyourtoken'
+# mapbox_template = 'https://a.tiles.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.jpg?access_token=pastyourtoken'
 google_template = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
 esri_template = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
 template_map = {
-    'm': mapbox_template,
+    # 'm': mapbox_template,
     'g': google_template,
     'e': esri_template,
 }
