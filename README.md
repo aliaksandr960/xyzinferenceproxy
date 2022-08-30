@@ -9,4 +9,4 @@
 - connect with your favorite GIS
 - see tiles with model inference
 
-***Unfortunately, to make it working smooth, you need fast internet connection and fast GPU***
+***Unfortunately, to make it working smoothly, you need fast internet connection and fast GPU***
