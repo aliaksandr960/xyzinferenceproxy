@@ -145,7 +145,7 @@ def do_inference_on_queue(inferenc_f, q, m):
 ## ---> Confiuration and run
 
 # XYZ sources configuration
-mapbox_template = 'https://a.tiles.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.jpg?access_token=pk.eyJ1Ijoib3BlbnN0cmVldG1hcCIsImEiOiJja2w5YWt5bnYwNjZmMnFwZjhtbHk1MnA1In0.eq2aumBK6JuRoIuBMm6Gew'
+mapbox_template = 'https://a.tiles.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.jpg?access_token=pastyourtoken'
 google_template = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
 esri_template = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
@@ -170,7 +170,7 @@ tile_list_downloader = lambda xyz_list: get_tiles(xyz_list, tile_downloader, til
 
 # Model cofiguration and init
 device = 'cuda:0'
-model = torch.jit.load('07_03_2022_12_56_33_train4landcoverai.pth.iou.pt.jit.pt', map_location=device)
+model = torch.jit.load('model_name.pth', map_location=device)
 model.eval()
 
 # Inference thread and queues configuration and init
