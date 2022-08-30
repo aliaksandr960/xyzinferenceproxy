@@ -1,6 +1,6 @@
 # xyzinferenceproxy
 
-### Just simple script with XYZ(WMS, TFS) inference proxy in 180 lines of code
+### Just simple script with XYZ(WMS, TFS) inference proxy in 225 lines of code
 
 - setup requirements from requirements.txt file
 - set parameters inside script
